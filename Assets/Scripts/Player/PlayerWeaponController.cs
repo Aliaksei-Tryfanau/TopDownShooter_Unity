@@ -8,6 +8,7 @@ public class PlayerWeaponController : MonoBehaviour
     private const float REFERENCE_BULLET_SPEED = 20;
     //This is the default speed from whcih our mass formula is derived.
 
+    [SerializeField] private Weapon_Data defaultWeaponData;
     [SerializeField] private Weapon currentWeapon;
     private bool weaponReady;
     private bool isShooting;
@@ -24,6 +25,7 @@ public class PlayerWeaponController : MonoBehaviour
     [SerializeField] private int maxSlots = 2;
     [SerializeField] private List<Weapon> weaponSlots;
 
+    [SerializeField] private GameObject weaponPickupPrefab;
 
     private void Start()
     {
@@ -41,7 +43,11 @@ public class PlayerWeaponController : MonoBehaviour
 
     #region Slots managment - Pickup\Equip\Drop\Ready Weapon
 
-    private void EquipStartingWeapon() => EquipWeapon(0);
+    private void EquipStartingWeapon()
+    {
+        weaponSlots[0] = new Weapon(defaultWeaponData);
+        EquipWeapon(0);
+    }
     private void EquipWeapon(int i)
     {
         if (i >= weaponSlots.Count)
@@ -56,9 +62,24 @@ public class PlayerWeaponController : MonoBehaviour
     }
     public void PickupWeapon(Weapon newWeapon)
     {
-        if (weaponSlots.Count >= maxSlots)
+
+        if (WeaponInSlots(newWeapon.weaponType) != null)
         {
-            Debug.Log("No slots avalible");
+            WeaponInSlots(newWeapon.weaponType).totalReserveAmmo += newWeapon.bulletsInMagazine;
+            return;
+        }
+
+
+
+        if (weaponSlots.Count >= maxSlots && newWeapon.weaponType != currentWeapon.weaponType)
+        {
+            int weaponIndex = weaponSlots.IndexOf(currentWeapon);
+
+            player.weaponVisuals.SwitchOffWeaponModels();
+            weaponSlots[weaponIndex] = newWeapon;
+
+            CreateWeaponOnTheGround();
+            EquipWeapon(weaponIndex);
             return;
         }
 
@@ -72,8 +93,16 @@ public class PlayerWeaponController : MonoBehaviour
             return;
 
 
+        CreateWeaponOnTheGround();
+
         weaponSlots.Remove(currentWeapon);
         EquipWeapon(0);
+    }
+
+    private void CreateWeaponOnTheGround()
+    {
+        GameObject droppedWeapon = ObjectPool.instance.GetObject(weaponPickupPrefab);
+        droppedWeapon.GetComponent<Pickup_Weapon>()?.SetupPickupWeapon(currentWeapon, transform);
     }
 
     public void SetWeaponReady(bool ready) => weaponReady = ready;
@@ -125,7 +154,7 @@ public class PlayerWeaponController : MonoBehaviour
         currentWeapon.bulletsInMagazine--;
 
 
-        GameObject newBullet = ObjectPool.instance.GetBullet();
+        GameObject newBullet = ObjectPool.instance.GetObject(bulletPrefab);
 
         newBullet.transform.position = GunPoint().position;
         newBullet.transform.rotation = Quaternion.LookRotation(GunPoint().forward);
@@ -158,8 +187,6 @@ public class PlayerWeaponController : MonoBehaviour
         if (player.aim.CanAimPrecisly() == false && player.aim.Target() == null)
             direction.y = 0;
 
-
-
         return direction;
     }
 
@@ -174,7 +201,6 @@ public class PlayerWeaponController : MonoBehaviour
 
         return null;
     }
-
     public Weapon CurrentWeapon() => currentWeapon;
     public Transform GunPoint() => player.weaponVisuals.CurrentWeaponModel().gunPoint;
 
