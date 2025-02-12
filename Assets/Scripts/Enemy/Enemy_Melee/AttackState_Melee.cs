@@ -18,12 +18,14 @@ public class AttackState_Melee : EnemyState
     public override void Enter()
     {
         base.Enter();
-        enemy.PullWeapon();
+        enemy.UpdateAttackData();
+        enemy.visuals.EnableWeaponModel(true);
+        enemy.visuals.EnableWeaponTrail(true);
 
         attackMoveSpeed = enemy.attackData.moveSpeed;
         enemy.anim.SetFloat("AttackAnimationSpeed", enemy.attackData.animationSpeed);
         enemy.anim.SetFloat("AttackIndex", enemy.attackData.attackIndex);
-        enemy.anim.SetFloat("SlashAttackIndex", Random.Range(0, 5));
+        enemy.anim.SetFloat("SlashAttackIndex", Random.Range(0, 6)); // we have 6 attacks with index from 0 to 5
 
 
         enemy.agent.isStopped = true;
@@ -36,6 +38,8 @@ public class AttackState_Melee : EnemyState
     {
         base.Exit();
         SetupNextAttack();
+
+        enemy.visuals.EnableWeaponTrail(false);
     }
 
     private void SetupNextAttack()
@@ -65,7 +69,9 @@ public class AttackState_Melee : EnemyState
 
         if (triggerCalled)
         {
-            if (enemy.PlayerInAttackRange())
+            if (enemy.CanThrowAxe())
+                stateMachine.ChangeState(enemy.abilityState);
+            else if (enemy.PlayerInAttackRange())
                 stateMachine.ChangeState(enemy.recoveryState);
             else
                 stateMachine.ChangeState(enemy.chaseState);
@@ -74,9 +80,9 @@ public class AttackState_Melee : EnemyState
 
     private bool PlayerClose() => Vector3.Distance(enemy.transform.position, enemy.player.position) <= 1;
 
-    private AttackData UpdatedAttackData()
+    private AttackData_EnemyMelee UpdatedAttackData()
     {
-        List<AttackData> validAttacks = new List<AttackData>(enemy.attackList);
+        List<AttackData_EnemyMelee> validAttacks = new List<AttackData_EnemyMelee>(enemy.attackList);
 
         if (PlayerClose())
             validAttacks.RemoveAll(parameter => parameter.attackType == AttackType_Melee.Charge);

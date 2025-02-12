@@ -2,17 +2,22 @@ using UnityEngine;
 using UnityEngine.AI;
 using System.Collections;
 
+[RequireComponent(typeof(NavMeshAgent))]
 public class Enemy : MonoBehaviour
 {
-    [SerializeField] protected int healthPoints = 20;
+
+    public LayerMask whatIsAlly;
+    public LayerMask whatIsPlayer;
+    [Space]
+    public int healthPoints = 20;
     
     [Header("Idle data")]
     public float idleTime;
     public float aggresionRange;
 
     [Header("Move data")]
-    public float moveSpeed;
-    public float chaseSpeed;
+    public float walkSpeed = 1.5f;
+    public float runSpeed = 3;
     public float turnSpeed;
     private bool manualMovement;
     private bool manualRotation;
@@ -22,17 +27,25 @@ public class Enemy : MonoBehaviour
     private int currentPatrolIndex;
 
     public bool inBattleMode { get; private set; }
+    protected bool isMeleeAttackReady;
 
     public Transform player {  get; private set; }
     public Animator anim { get; private set; }
     public NavMeshAgent agent { get; private set; }
     public EnemyStateMachine stateMachine { get; private set; }
+    public Enemy_Visuals visuals { get; private set; }
 
+    public Enemy_Health health { get; private set; }
+
+    public Ragdoll ragdoll { get; private set; }
 
     protected virtual void Awake()
     {
         stateMachine = new EnemyStateMachine();
 
+        health = GetComponent<Enemy_Health>();
+        ragdoll = GetComponent<Ragdoll>();
+        visuals = GetComponent<Enemy_Visuals>();
         agent = GetComponent<NavMeshAgent>();
         anim = GetComponentInChildren<Animator>();
         player = GameObject.Find("Player").GetComponent<Transform>();
@@ -47,14 +60,18 @@ public class Enemy : MonoBehaviour
 
     protected virtual void Update()
     {
-        
+        if (ShouldEnterBattleMode())
+            EnterBattleMode();
+    }
+
+    protected virtual void InitializePerk()
+    {
+
     }
 
     protected bool ShouldEnterBattleMode()
     {
-        bool inAggresionRange = Vector3.Distance(transform.position, player.position) < aggresionRange;
-
-        if (inAggresionRange && !inBattleMode)
+        if (IsPlayerInAgrresionRange() && !inBattleMode)
         {
             EnterBattleMode();
             return true;
@@ -68,15 +85,60 @@ public class Enemy : MonoBehaviour
         inBattleMode = true;
     }
 
-    public virtual void GetHit()
+    public virtual void GetHit(int damage)
     {
+        health.ReduceHealth(damage);
+
+        if (health.ShouldDie())
+            Die();
+
+
         EnterBattleMode();
-        healthPoints--;
     }
 
-    public virtual void DeathImpact( Vector3 force,Vector3 hitPoint,Rigidbody rb)
+    public virtual void Die()
     {
-        StartCoroutine(DeathImpactCourutine(force,hitPoint,rb));
+
+    }
+
+    public virtual void MeleeAttackCheck(Transform[] damagePoints, float attackCheckRadius,GameObject fx,int damage)
+    {
+        if (isMeleeAttackReady == false)
+            return;
+
+        foreach (Transform attackPoint in damagePoints)
+        {
+            Collider[] detectedHits =
+                Physics.OverlapSphere(attackPoint.position, attackCheckRadius, whatIsPlayer);
+
+
+            for (int i = 0; i < detectedHits.Length; i++)
+            {
+                IDamagable damagable = detectedHits[i].GetComponent<IDamagable>();
+
+                if (damagable != null)
+                {
+
+                    damagable.TakeDamage(damage);
+                    isMeleeAttackReady = false;
+                    GameObject newAttackFx = ObjectPool.instance.GetObject(fx, attackPoint);
+
+                    ObjectPool.instance.ReturnObject(newAttackFx, 1);
+                    return;
+                }
+            }
+
+        }
+
+    }
+
+    public void EnableMeleeAttackCheck(bool enable) => isMeleeAttackReady = enable;
+
+
+    public virtual void BulletImpact( Vector3 force,Vector3 hitPoint,Rigidbody rb)
+    {
+        if(health.ShouldDie())
+            StartCoroutine(DeathImpactCourutine(force,hitPoint,rb));
     }
     private IEnumerator DeathImpactCourutine(Vector3 force, Vector3 hitPoint, Rigidbody rb)
     {
@@ -85,13 +147,17 @@ public class Enemy : MonoBehaviour
         rb.AddForceAtPosition(force, hitPoint, ForceMode.Impulse);
     }
 
-    public void FaceTarget(Vector3 target)
+    public void FaceTarget(Vector3 target,float turnSpeed = 0)
     {
         Quaternion targetRotation = Quaternion.LookRotation(target - transform.position);
 
         Vector3 currentEulerAngels = transform.rotation.eulerAngles;
 
-        float yRotation = Mathf.LerpAngle(currentEulerAngels.y, targetRotation.eulerAngles.y, turnSpeed * Time.deltaTime);
+        if (turnSpeed == 0)
+            turnSpeed = this.turnSpeed;
+
+        float yRotation = 
+            Mathf.LerpAngle(currentEulerAngels.y, targetRotation.eulerAngles.y, turnSpeed * Time.deltaTime);
 
         transform.rotation = Quaternion.Euler(currentEulerAngels.x, yRotation, currentEulerAngels.z);
     }
@@ -140,7 +206,7 @@ public class Enemy : MonoBehaviour
 
     #endregion
 
-
+    public bool IsPlayerInAgrresionRange() => Vector3.Distance(transform.position, player.position) < aggresionRange;
     protected virtual void OnDrawGizmos()
     {
         Gizmos.DrawWireSphere(transform.position, aggresionRange);
